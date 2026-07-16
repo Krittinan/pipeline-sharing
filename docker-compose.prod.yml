@@ -1,0 +1,89 @@
+# PROD: รันทุก service ใน Docker (postgres + redis + kong + api + web)
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: medium_postgres_prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-medium}
+      # บังคับตั้งรหัสผ่านเอง — compose จะ error ถ้าไม่ตั้ง
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-medium}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medium} -d ${POSTGRES_DB:-medium}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: medium_redis_prod
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: medium_api_prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-medium}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-medium}?schema=public
+      REDIS_URL: redis://redis:6379
+      # ต้องตั้ง JWT_SECRET เอง (compose จะ error ถ้าไม่ตั้ง) — ห้ามใช้ค่า default
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (openssl rand -base64 48)}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      API_PORT: 3005
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3006}
+      NODE_ENV: production
+    expose:
+      - "3005"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # baked ตอน build (browser-facing) -> ต้องชี้ไปที่ Kong ที่ map ออก host
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+    container_name: medium_web_prod
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3006:3006"
+
+  kong:
+    image: kong:3.9
+    container_name: medium_kong_prod
+    restart: unless-stopped
+    depends_on:
+      - api
+      - redis
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      # admin ฟังเฉพาะ loopback ในคอนเทนเนอร์ และไม่ publish ออก host (ความปลอดภัย prod)
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+      KONG_LOG_LEVEL: info
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./infra/kong/kong.prod.yml:/kong/kong.yml:ro
+
+volumes:
+  pgdata_prod:

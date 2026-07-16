@@ -1,0 +1,16 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 blocks dependency build/postinstall scripts by default.
+# Allow the ones this project genuinely needs to compile / generate.
+onlyBuiltDependencies:
+  - bcrypt
+  - prisma
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "@nestjs/core"
+  - esbuild
+  - "@scarf/scarf"
+  - unrs-resolver
+  - sharp

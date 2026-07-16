@@ -1,0 +1,40 @@
+# .dockerignore — build context = repo root (docker-compose*.yml: context: .)
+# มิเรอร์ .gitignore ให้เป็น standard เดียวกัน แต่ pattern ใน .dockerignore อ้างอิง context root
+# เสมอ จึงต้องใช้ **/ เพื่อ match ระดับ nested (git จัดการให้เองโดยไม่ต้องใส่)
+
+# git / docker metadata — ไม่ควร bake เข้า image
+.git
+.gitignore
+.dockerignore
+
+# dependencies
+**/node_modules
+**/.pnpm-store
+
+# builds
+**/dist
+**/build
+**/.next
+**/out
+**/*.tsbuildinfo
+
+# env (secrets — ห้ามหลุดเข้า image)
+**/.env
+**/.env.local
+**/.env.*.local
+
+# logs
+**/*.log
+**/npm-debug.log*
+**/pnpm-debug.log*
+
+# test / coverage
+**/coverage
+
+# os / editor
+**/.DS_Store
+**/.idea
+**/.vscode
+
+# prisma local sqlite
+**/*.db
