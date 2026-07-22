@@ -1,11 +1,6 @@
 pipeline {
-  // ⬇️ ถ้าติด GID ของ docker socket ให้ปรับ --group-add ให้ตรงเครื่อง
-  agent {
-    docker {
-      image 'node:22-bookworm-slim'
-      args '-v /var/run/docker.sock:/var/run/docker.sock --group-add 999'
-    }
-  }
+  // 🔧 รันบน Agent ที่ตั้งชื่อ Label ไว้ใน Part 4.3 (ไม่ใช่ agent { docker {...} } แบบเดิม)
+  agent { label 'node-pnpm' }
 
   environment {
     PNPM_VERSION = '10.25.0'
@@ -29,27 +24,27 @@ pipeline {
     }
 
     stage('Build shared') {            // ต้อง build ก่อน api/web
-      steps { 
-        sh 'pnpm build:shared' 
+      steps {
+        sh 'pnpm build:shared'
       }
     }
 
     stage('Prisma generate') {         // service test import @prisma/client ตอน runtime
-      steps { 
-        sh 'pnpm --filter @repo/api prisma:generate' 
+      steps {
+        sh 'pnpm --filter @repo/api prisma:generate'
       }
     }
 
-    stage('Quality') {                 // lint + test พร้อมกัน
+    stage('Quality') {                 // lint + test พร้อมกัน (Part 7)
       parallel {
-        stage('Lint') { 
-          steps { 
-            sh 'pnpm lint' 
-          } 
+        stage('Lint') {
+          steps {
+            sh 'pnpm lint'
+          }
         }
         stage('Test') {
-          steps { 
-            sh 'pnpm --filter @repo/api --filter @repo/web --parallel test' 
+          steps {
+            sh 'pnpm --filter @repo/api --filter @repo/web --parallel test'
           }
         }
       }
@@ -66,9 +61,6 @@ pipeline {
         }
       }
       steps {
-        // ลง Java JRE ชั่วคราวเพื่อให้ sonar-scanner ทำงานใน Node container ได้
-        sh 'apt-get update && apt-get install -y --no-install-recommends default-jre-headless'
-        
         withSonarQubeEnv('SonarQubeLocal') {
           script {
             def scannerHome = tool 'SonarScanner'
@@ -99,47 +91,29 @@ pipeline {
       when {
         allOf {
           not { changeRequest() }
-          anyOf {
-            branch 'develop'
-            branch 'staging'
-            branch 'main'
-          }
+          anyOf { branch 'develop'; branch 'staging'; branch 'main' }
         }
       }
       steps {
-        // ลง docker-cli ชั่วคราวเพื่อส่งคำสั่งผ่าน /var/run/docker.sock
-        sh 'apt-get update && apt-get install -y --no-install-recommends docker.io'
-
+        // Agent มี docker CLI ติดตั้งไว้แล้วจาก Part 4 — ไม่ต้องลงเพิ่มสดๆ ตอนนี้
         sh "docker build -f apps/api/Dockerfile -t medium-api:${env.BRANCH_NAME}-${env.BUILD_NUMBER} ."
         sh "docker build -f apps/web/Dockerfile -t medium-web:${env.BRANCH_NAME}-${env.BUILD_NUMBER} ."
       }
     }
 
     // ===== Deploy แยกตาม branch =====
-    // NOTE: บน Mac เครื่องเดียว deploy หลาย env พร้อมกัน port ชนกัน (8000/3006)
+    // NOTE: บนเครื่องเดียว deploy หลาย env พร้อมกัน port ชนกัน (8000/3006)
     //       ตอนเรียนให้ deploy ทีละ env
     stage('Deploy DEV') {
-      when { 
-        branch 'develop' 
-      }
-      steps { 
-        echo 'Deploy -> DEV' /* docker compose -p medium-dev ... */ 
-      }
+      when { branch 'develop' }
+      steps { echo 'Deploy -> DEV' /* docker compose -p medium-dev ... */ }
     }
-
     stage('Deploy STAGING') {
-      when { 
-        branch 'staging' 
-      }
-      steps { 
-        echo 'Deploy -> STAGING' 
-      }
+      when { branch 'staging' }
+      steps { echo 'Deploy -> STAGING' }
     }
-
     stage('Deploy PROD') {
-      when { 
-        branch 'main' 
-      }
+      when { branch 'main' }
       steps {
         input message: 'อนุมัติให้ Deploy ขึ้น Production?'   // Manual Approval
         echo 'Deploy -> PROD'
@@ -149,14 +123,8 @@ pipeline {
   }
 
   post {
-    success { 
-      echo "OK — ${env.BRANCH_NAME} #${env.BUILD_NUMBER}" 
-    }
-    failure { 
-      echo 'FAILED — เปิดดู Console Output' 
-    }
-    always { 
-      cleanWs() 
-    }
+    success { echo "OK — ${env.BRANCH_NAME} #${env.BUILD_NUMBER}" }
+    failure { echo 'FAILED — เปิดดู Console Output' }
+    always  { cleanWs() }
   }
 }
