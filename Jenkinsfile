@@ -19,6 +19,7 @@ pipeline {
     // ===== ส่วน CI: รันทุกกรณี ไม่ว่าจะเป็น PR หรือ Push เข้า Branch ใดก็ตาม =====
     stage('Install') {
       steps {
+        sh 'pnpm install -g corepack@latest'
         sh 'corepack enable'                                   // เปิดใช้งาน corepack ที่มากับ Node
         sh "corepack prepare pnpm@${env.PNPM_VERSION} --activate"  // ดึง pnpm เวอร์ชันที่ต้องการมาใช้
         sh 'pnpm install --frozen-lockfile'                    // ติดตั้ง Dependency ตาม lockfile เป๊ะๆ ห้ามอัปเดตเอง
